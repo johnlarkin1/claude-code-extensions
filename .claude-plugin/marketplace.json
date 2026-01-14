@@ -1,0 +1,11 @@
+{
+  "name": "larkin-plugins",
+  "owner": {
+    "name": "John Larkin"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for desktop apps, TUIs, diagrams, and developer workflows",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": []
+}
