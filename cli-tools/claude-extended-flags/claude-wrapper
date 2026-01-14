@@ -1,0 +1,834 @@
+#!/bin/bash
+#
+# claude-wrapper - Extends Claude CLI with --status, --usage, --config flags
+#
+# This script wraps the real claude binary to add support for querying
+# session status, usage metrics, and configuration without entering
+# an interactive session.
+#
+# Usage:
+#   claude --status [--format=json|pretty|text]
+#   claude --usage [--format=json|pretty|text]
+#   claude --config [--format=json|pretty|text]
+#   claude [any other args...]  # Passes through to real claude
+#
+# Implementation: Uses OAuth APIs and local file reads (no expect/TUI scraping)
+#
+
+set -euo pipefail
+
+# Version
+VERSION="2.0.0"
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+# Real claude binary path - set by install.sh or auto-detected
+REAL_CLAUDE="${CLAUDE_REAL_PATH:-}"
+
+# Default output format
+DEFAULT_FORMAT="pretty"
+
+# API base URL
+API_BASE="https://api.anthropic.com/api/oauth"
+
+# Local paths
+CLAUDE_DIR="$HOME/.claude"
+SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+STORE_DB="$CLAUDE_DIR/__store.db"
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+# Find the real claude binary (skipping this wrapper)
+get_real_claude() {
+    if [[ -n "$REAL_CLAUDE" ]]; then
+        echo "$REAL_CLAUDE"
+        return 0
+    fi
+
+    # Get this script's absolute path
+    local this_script
+    this_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+    # Search PATH for claude, skipping this wrapper
+    local IFS=':'
+    for dir in $PATH; do
+        local candidate="$dir/claude"
+        if [[ -x "$candidate" && "$candidate" != "$this_script" ]]; then
+            # Also check it's not a symlink to this script
+            local resolved
+            resolved="$(readlink -f "$candidate" 2>/dev/null || echo "$candidate")"
+            if [[ "$resolved" != "$this_script" ]]; then
+                echo "$candidate"
+                return 0
+            fi
+        fi
+    done
+
+    # Fallback: check common locations
+    for candidate in /usr/local/bin/claude /opt/homebrew/bin/claude ~/.local/bin/claude; do
+        if [[ -x "$candidate" ]]; then
+            local resolved
+            resolved="$(readlink -f "$candidate" 2>/dev/null || echo "$candidate")"
+            if [[ "$resolved" != "$this_script" ]]; then
+                echo "$candidate"
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
+# Check required dependencies
+check_dependencies() {
+    local missing=()
+
+    if ! command -v jq &>/dev/null; then
+        missing+=("jq")
+    fi
+
+    if ! command -v curl &>/dev/null; then
+        missing+=("curl")
+    fi
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Error: Missing required dependencies: ${missing[*]}" >&2
+        echo "" >&2
+        if [[ "$(uname)" == "Darwin" ]]; then
+            echo "Install with: brew install ${missing[*]}" >&2
+        else
+            echo "Install with: sudo apt install ${missing[*]}  # Debian/Ubuntu" >&2
+        fi
+        exit 1
+    fi
+}
+
+# Check if logged in (credentials exist)
+check_logged_in() {
+    if ! security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
+        echo "Error: Not logged in to Claude Code." >&2
+        echo "Run 'claude' to authenticate first." >&2
+        exit 1
+    fi
+}
+
+# Print help message
+print_help() {
+    cat << 'EOF'
+claude-wrapper - Extended Claude CLI (v2.0 - API-based)
+
+EXTENDED FLAGS:
+  --status              Show session status (version, session ID, model, etc.)
+  --usage               Show usage metrics (session %, weekly %, reset times)
+  --config              Show configuration settings
+
+OPTIONS:
+  --format=FORMAT       Output format: json (default), pretty, text
+  --help-extended       Show this help message
+
+All other arguments are passed directly to the real claude CLI.
+
+EXAMPLES:
+  claude --status                    # JSON output of session status
+  claude --usage --format=pretty     # Human-readable usage stats
+  claude --config --format=text      # Config as key=value pairs
+  claude -p "hello"                  # Normal claude usage (pass-through)
+
+For standard claude help, use: claude --help
+EOF
+}
+
+# ============================================================================
+# API & Credential Functions
+# ============================================================================
+
+# Get OAuth credentials from Keychain
+get_credentials() {
+    security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null
+}
+
+# Get OAuth token from credentials
+get_oauth_token() {
+    get_credentials | jq -r '.claudeAiOauth.accessToken // empty'
+}
+
+# Get credential metadata (subscription type, rate limit tier)
+get_credential_info() {
+    get_credentials | jq '{
+        rateLimitTier: .claudeAiOauth.rateLimitTier,
+        subscriptionType: .claudeAiOauth.subscriptionType
+    }'
+}
+
+# Call OAuth API endpoint
+call_api() {
+    local endpoint="$1"
+    local token
+    token=$(get_oauth_token)
+
+    if [[ -z "$token" ]]; then
+        echo "Error: Could not get OAuth token" >&2
+        return 1
+    fi
+
+    local response
+    response=$(curl -s "$API_BASE/$endpoint" \
+        -H "Authorization: Bearer $token" \
+        -H "anthropic-beta: oauth-2025-04-20" \
+        -H "Content-Type: application/json" \
+        -H "User-Agent: claude-wrapper/$VERSION")
+
+    # Check for API errors
+    if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
+        local error_msg
+        error_msg=$(echo "$response" | jq -r '.error.message // .error.type // "Unknown error"')
+        echo "Error: API returned error: $error_msg" >&2
+        return 1
+    fi
+
+    echo "$response"
+}
+
+# ============================================================================
+# Data Gathering Functions
+# ============================================================================
+
+# Get usage data from API
+get_usage_data() {
+    call_api "usage"
+}
+
+# Get profile data from API
+get_profile_data() {
+    call_api "profile"
+}
+
+# Get Claude version
+get_claude_version() {
+    local real_claude
+    real_claude=$(get_real_claude 2>/dev/null) || return 1
+    "$real_claude" --version 2>/dev/null | head -1 | sed 's/ (Claude Code)//'
+}
+
+# Get latest session ID from SQLite
+get_session_id() {
+    if [[ -f "$STORE_DB" ]]; then
+        sqlite3 "$STORE_DB" "SELECT session_id FROM base_messages ORDER BY timestamp DESC LIMIT 1;" 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
+
+# Get MCP servers count from settings
+get_mcp_servers_info() {
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        local count
+        count=$(jq '[.enabledPlugins // {} | to_entries[] | select(.value == true)] | length' "$SETTINGS_FILE" 2>/dev/null || echo "0")
+        if [[ "$count" -gt 0 ]]; then
+            echo "$count enabled"
+        else
+            echo "none"
+        fi
+    else
+        echo "none"
+    fi
+}
+
+# Check for CLAUDE.md in current directory
+get_memory_info() {
+    if [[ -f "CLAUDE.md" ]]; then
+        echo "project (CLAUDE.md)"
+    elif [[ -f ".claude/CLAUDE.md" ]]; then
+        echo "project (.claude/CLAUDE.md)"
+    else
+        echo "none"
+    fi
+}
+
+# Get setting sources
+get_setting_sources() {
+    local sources=()
+    [[ -f "$SETTINGS_FILE" ]] && sources+=("User settings")
+    [[ -f "CLAUDE.md" || -f ".claude/CLAUDE.md" ]] && sources+=("Project")
+
+    if [[ ${#sources[@]} -gt 0 ]]; then
+        printf '%s\n' "${sources[*]}" | tr ' ' ', '
+    else
+        echo "defaults"
+    fi
+}
+
+# Format reset time from ISO8601 to human-readable
+format_reset_time() {
+    local iso_time="$1"
+    if [[ -z "$iso_time" || "$iso_time" == "null" ]]; then
+        echo ""
+        return
+    fi
+
+    # Convert ISO8601 to human-readable format
+    # Example: "2026-01-10T17:59:59.523826+00:00" -> "Jan 10 at 12pm (America/New_York)"
+    local formatted
+    if command -v gdate &>/dev/null; then
+        # macOS with GNU date from coreutils
+        formatted=$(gdate -d "$iso_time" +"%b %d at %-I%p (%Z)" 2>/dev/null || echo "$iso_time")
+    else
+        # Try BSD date (macOS default) - more limited
+        # Extract just the date/time parts for a simpler format
+        local date_part hour
+        date_part=$(echo "$iso_time" | cut -d'T' -f1)
+        hour=$(echo "$iso_time" | cut -d'T' -f2 | cut -d':' -f1)
+
+        # Convert to 12-hour format
+        local ampm="am"
+        local hour12=$((10#$hour))
+        if [[ $hour12 -ge 12 ]]; then
+            ampm="pm"
+            [[ $hour12 -gt 12 ]] && hour12=$((hour12 - 12))
+        fi
+        [[ $hour12 -eq 0 ]] && hour12=12
+
+        # Format date
+        local month day
+        month=$(echo "$date_part" | cut -d'-' -f2)
+        day=$(echo "$date_part" | cut -d'-' -f3)
+
+        case "$month" in
+            01) month="Jan" ;; 02) month="Feb" ;; 03) month="Mar" ;;
+            04) month="Apr" ;; 05) month="May" ;; 06) month="Jun" ;;
+            07) month="Jul" ;; 08) month="Aug" ;; 09) month="Sep" ;;
+            10) month="Oct" ;; 11) month="Nov" ;; 12) month="Dec" ;;
+        esac
+
+        # Remove leading zero from day
+        day=$((10#$day))
+
+        formatted="$month $day at ${hour12}${ampm} (UTC)"
+    fi
+
+    echo "$formatted"
+}
+
+# Map subscription type to login method display
+get_login_method() {
+    local sub_type="$1"
+    case "$sub_type" in
+        max)        echo "Claude Max Account" ;;
+        pro)        echo "Claude Pro Account" ;;
+        team)       echo "Claude Team Account" ;;
+        enterprise) echo "Claude Enterprise Account" ;;
+        *)          echo "Claude Account" ;;
+    esac
+}
+
+# Map rate limit tier to model display
+get_model_display() {
+    local tier="$1"
+    case "$tier" in
+        *max_5x*|*max*)  echo "Default (Opus 4.5)" ;;
+        *pro*)           echo "Default (Sonnet)" ;;
+        *)               echo "Default" ;;
+    esac
+}
+
+# ============================================================================
+# Output Formatting Functions
+# ============================================================================
+
+# Format status as JSON
+format_status_json() {
+    local data="$1"
+    IFS=$'\t' read -r version session_id cwd login_method organization email model mcp_servers memory setting_sources <<< "$data"
+
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    cat << EOF
+{
+  "version": "${version:-}",
+  "session_id": "${session_id:-}",
+  "cwd": "${cwd:-}",
+  "login_method": "${login_method:-}",
+  "organization": "${organization:-}",
+  "email": "${email:-}",
+  "model": "${model:-}",
+  "mcp_servers": "${mcp_servers:-}",
+  "memory": "${memory:-}",
+  "setting_sources": "${setting_sources:-}",
+  "timestamp": "$timestamp"
+}
+EOF
+}
+
+# Format status as pretty output (matches Claude Code TUI style)
+format_status_pretty() {
+    local data="$1"
+    IFS=$'\t' read -r version session_id cwd login_method organization email model mcp_servers memory setting_sources <<< "$data"
+
+    # Header
+    echo ""
+    printf " \033[1mVersion:\033[0m %s\n" "${version:-N/A}"
+    printf " \033[1mSession ID:\033[0m %s\n" "${session_id:-N/A}"
+    printf " \033[1mcwd:\033[0m %s\n" "${cwd:-N/A}"
+    printf " \033[1mLogin method:\033[0m %s\n" "${login_method:-N/A}"
+    printf " \033[1mOrganization:\033[0m %s\n" "${organization:-N/A}"
+    printf " \033[1mEmail:\033[0m %s\n" "${email:-N/A}"
+    echo ""
+    printf " \033[1mModel:\033[0m %s\n" "${model:-N/A}"
+    printf " \033[1mMCP servers:\033[0m %s\n" "${mcp_servers:-N/A}"
+    printf " \033[1mMemory:\033[0m %s\n" "${memory:-N/A}"
+    printf " \033[1mSetting sources:\033[0m %s\n" "${setting_sources:-N/A}"
+    echo ""
+}
+
+# Format status as text (key=value)
+format_status_text() {
+    local data="$1"
+    IFS=$'\t' read -r version session_id cwd login_method organization email model mcp_servers memory setting_sources <<< "$data"
+
+    echo "version=${version:-}"
+    echo "session_id=${session_id:-}"
+    echo "cwd=${cwd:-}"
+    echo "login_method=${login_method:-}"
+    echo "organization=${organization:-}"
+    echo "email=${email:-}"
+    echo "model=${model:-}"
+    echo "mcp_servers=${mcp_servers:-}"
+    echo "memory=${memory:-}"
+    echo "setting_sources=${setting_sources:-}"
+    echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+
+# Format config as JSON
+format_config_json() {
+    local config_data="$1"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    echo "{"
+    local first=true
+    while IFS='=' read -r key value; do
+        if [[ -n "$key" ]]; then
+            if [[ "$first" == "true" ]]; then
+                first=false
+            else
+                echo ","
+            fi
+            # Convert true/false to JSON booleans
+            if [[ "$value" == "true" || "$value" == "false" ]]; then
+                printf '  "%s": %s' "$key" "$value"
+            else
+                printf '  "%s": "%s"' "$key" "$value"
+            fi
+        fi
+    done <<< "$config_data"
+    echo ","
+    printf '  "timestamp": "%s"\n' "$timestamp"
+    echo "}"
+}
+
+# Format config as pretty output (matches Claude Code TUI style)
+format_config_pretty() {
+    local config_data="$1"
+
+    echo ""
+    echo " Claude Code Settings (from ~/.claude/settings.json)"
+    echo ""
+
+    local first=true
+    while IFS='=' read -r key value; do
+        if [[ -n "$key" ]]; then
+            # Convert snake_case back to Title Case for display
+            local display_key
+            display_key=$(echo "$key" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+
+            # Handle long plugin lists by truncating display
+            local display_value="$value"
+            if [[ "$key" == "enabled_plugins" && ${#value} -gt 60 ]]; then
+                # Count plugins and show summary
+                local plugin_count
+                plugin_count=$(echo "$value" | tr ',' '\n' | wc -l | tr -d ' ')
+                display_value="$plugin_count plugins enabled"
+            fi
+
+            # First item gets cursor indicator
+            if [[ "$first" == "true" ]]; then
+                printf " \033[36m❯\033[0m %-40s %s\n" "$display_key" "$display_value"
+                first=false
+            else
+                printf "   %-40s %s\n" "$display_key" "$display_value"
+            fi
+        fi
+    done <<< "$config_data"
+
+    echo ""
+    echo " Note: Full config available via 'claude' then '/status' → Config tab"
+    echo ""
+}
+
+# Format config as text (already in key=value format)
+format_config_text() {
+    local config_data="$1"
+    echo "$config_data"
+    echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+
+# Format usage as JSON
+format_usage_json() {
+    local data="$1"
+    IFS=$'\t' read -r cs_pct cs_resets wa_pct wa_resets ws_pct ws_resets extra <<< "$data"
+
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    cat << EOF
+{
+  "current_session": {
+    "percent_used": ${cs_pct:-0},
+    "resets": "${cs_resets:-}"
+  },
+  "current_week_all_models": {
+    "percent_used": ${wa_pct:-0},
+    "resets": "${wa_resets:-}"
+  },
+  "current_week_sonnet_only": {
+    "percent_used": ${ws_pct:-0},
+    "resets": "${ws_resets:-}"
+  },
+  "extra_usage": "${extra:-unknown}",
+  "timestamp": "$timestamp"
+}
+EOF
+}
+
+# Generate a progress bar with block characters
+# Args: $1 = percentage (0-100), $2 = total width (default 50)
+generate_progress_bar() {
+    local percent="${1:-0}"
+    local width="${2:-50}"
+
+    # Ensure percent is a number
+    percent=$(echo "$percent" | awk '{printf "%.0f", $1}')
+    [[ $percent -gt 100 ]] && percent=100
+    [[ $percent -lt 0 ]] && percent=0
+
+    # Calculate filled blocks (each block = 2% for width of 50)
+    local filled_blocks=$((percent * width / 100))
+    local half_block=0
+
+    # Check if we need a half block (▌)
+    local remainder=$((percent * width % 100))
+    if [[ $remainder -ge 50 ]]; then
+        half_block=1
+    fi
+
+    # Build the progress bar
+    local bar=""
+    local i
+    for ((i = 0; i < filled_blocks; i++)); do
+        bar+="█"
+    done
+
+    if [[ $half_block -eq 1 && $filled_blocks -lt $width ]]; then
+        bar+="▌"
+        filled_blocks=$((filled_blocks + 1))
+    fi
+
+    # Add remaining spaces
+    for ((i = filled_blocks; i < width; i++)); do
+        bar+=" "
+    done
+
+    echo "$bar"
+}
+
+# Format usage as pretty output (matches Claude Code TUI style)
+format_usage_pretty() {
+    local data="$1"
+    IFS=$'\t' read -r cs_pct cs_resets wa_pct wa_resets ws_pct ws_resets extra <<< "$data"
+
+    local bar_width=50
+
+    echo ""
+
+    # Current session
+    echo " Current session"
+    local cs_bar
+    cs_bar=$(generate_progress_bar "${cs_pct:-0}" "$bar_width")
+    printf " %s %s%% used\n" "$cs_bar" "${cs_pct:-0}"
+    printf " Resets %s\n" "${cs_resets:-N/A}"
+    echo ""
+
+    # Current week (all models)
+    echo " Current week (all models)"
+    local wa_bar
+    wa_bar=$(generate_progress_bar "${wa_pct:-0}" "$bar_width")
+    printf " %s %s%% used\n" "$wa_bar" "${wa_pct:-0}"
+    printf " Resets %s\n" "${wa_resets:-N/A}"
+    echo ""
+
+    # Current week (Sonnet only)
+    echo " Current week (Sonnet only)"
+    local ws_bar
+    ws_bar=$(generate_progress_bar "${ws_pct:-0}" "$bar_width")
+    printf " %s %s%% used\n" "$ws_bar" "${ws_pct:-0}"
+    printf " Resets %s\n" "${ws_resets:-N/A}"
+    echo ""
+
+    # Extra usage
+    if [[ "${extra:-}" == "enabled" ]]; then
+        printf " \033[32m●\033[0m Extra usage enabled\n"
+    else
+        printf " \033[90m○\033[0m Extra usage not enabled\n"
+    fi
+    echo ""
+}
+
+# Format usage as text (key=value)
+format_usage_text() {
+    local data="$1"
+    IFS=$'\t' read -r cs_pct cs_resets wa_pct wa_resets ws_pct ws_resets extra <<< "$data"
+
+    echo "current_session_percent=${cs_pct:-0}"
+    echo "current_session_resets=${cs_resets:-}"
+    echo "current_week_all_models_percent=${wa_pct:-0}"
+    echo "current_week_all_models_resets=${wa_resets:-}"
+    echo "current_week_sonnet_only_percent=${ws_pct:-0}"
+    echo "current_week_sonnet_only_resets=${ws_resets:-}"
+    echo "extra_usage=${extra:-unknown}"
+    echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+
+# ============================================================================
+# Main Command Handlers
+# ============================================================================
+
+handle_status() {
+    local format="$1"
+    check_dependencies
+    check_logged_in
+
+    # Get data from various sources
+    local profile_data cred_info
+    profile_data=$(get_profile_data) || exit 1
+    cred_info=$(get_credential_info) || exit 1
+
+    # Extract fields
+    local version session_id cwd login_method organization email model mcp_servers memory setting_sources
+
+    version=$(get_claude_version)
+    session_id=$(get_session_id)
+    cwd="$PWD"
+
+    # From API profile
+    email=$(echo "$profile_data" | jq -r '.account.email // empty')
+    organization=$(echo "$profile_data" | jq -r '.organization.name // empty')
+
+    # From credentials
+    local sub_type rate_tier
+    sub_type=$(echo "$cred_info" | jq -r '.subscriptionType // empty')
+    rate_tier=$(echo "$cred_info" | jq -r '.rateLimitTier // empty')
+
+    login_method=$(get_login_method "$sub_type")
+    model=$(get_model_display "$rate_tier")
+
+    # From local files
+    mcp_servers=$(get_mcp_servers_info)
+    memory=$(get_memory_info)
+    setting_sources=$(get_setting_sources)
+
+    # Format as tab-separated for parsing
+    local parsed_data
+    parsed_data=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+        "$version" "$session_id" "$cwd" "$login_method" "$organization" \
+        "$email" "$model" "$mcp_servers" "$memory" "$setting_sources")
+
+    case "$format" in
+        json)   format_status_json "$parsed_data" ;;
+        pretty) format_status_pretty "$parsed_data" ;;
+        text)   format_status_text "$parsed_data" ;;
+        *)      echo "Error: Unknown format '$format'" >&2; exit 1 ;;
+    esac
+}
+
+handle_config() {
+    local format="$1"
+    check_dependencies
+
+    local config_data=""
+
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        # Read settings and convert to key=value format
+        local settings
+        settings=$(cat "$SETTINGS_FILE")
+
+        # Extract enabled plugins as a list
+        local enabled_plugins
+        enabled_plugins=$(echo "$settings" | jq -r '[.enabledPlugins // {} | to_entries[] | select(.value == true) | .key] | join(", ")' 2>/dev/null || echo "")
+
+        # Extract boolean settings
+        local always_thinking
+        always_thinking=$(echo "$settings" | jq -r '.alwaysThinkingEnabled // false' 2>/dev/null || echo "false")
+
+        # Build config output
+        config_data="enabled_plugins=${enabled_plugins:-none}
+always_thinking_enabled=${always_thinking}"
+
+        # Add any additional settings from the file
+        # Check for common settings that might exist
+        local auto_compact show_tips
+        auto_compact=$(echo "$settings" | jq -r '.autoCompact // empty' 2>/dev/null)
+        show_tips=$(echo "$settings" | jq -r '.showTips // empty' 2>/dev/null)
+
+        [[ -n "$auto_compact" ]] && config_data+="
+auto_compact=${auto_compact}"
+        [[ -n "$show_tips" ]] && config_data+="
+show_tips=${show_tips}"
+    else
+        config_data="enabled_plugins=none
+always_thinking_enabled=false"
+    fi
+
+    case "$format" in
+        json)   format_config_json "$config_data" ;;
+        pretty) format_config_pretty "$config_data" ;;
+        text)   format_config_text "$config_data" ;;
+        *)      echo "Error: Unknown format '$format'" >&2; exit 1 ;;
+    esac
+}
+
+handle_usage() {
+    local format="$1"
+    check_dependencies
+    check_logged_in
+
+    # Get usage data from API
+    local usage_data
+    usage_data=$(get_usage_data) || exit 1
+
+    # Extract fields from API response
+    local cs_pct cs_resets wa_pct wa_resets ws_pct ws_resets extra
+
+    # Current session (five_hour)
+    cs_pct=$(echo "$usage_data" | jq -r '.five_hour.utilization // 0' | awk '{printf "%.0f", $1}')
+    cs_resets=$(format_reset_time "$(echo "$usage_data" | jq -r '.five_hour.resets_at // empty')")
+
+    # Current week all models (seven_day)
+    wa_pct=$(echo "$usage_data" | jq -r '.seven_day.utilization // 0' | awk '{printf "%.0f", $1}')
+    wa_resets=$(format_reset_time "$(echo "$usage_data" | jq -r '.seven_day.resets_at // empty')")
+
+    # Current week Sonnet only
+    ws_pct=$(echo "$usage_data" | jq -r '.seven_day_sonnet.utilization // 0' | awk '{printf "%.0f", $1}')
+    ws_resets=$(format_reset_time "$(echo "$usage_data" | jq -r '.seven_day_sonnet.resets_at // empty')")
+
+    # Extra usage
+    local extra_enabled
+    extra_enabled=$(echo "$usage_data" | jq -r '.extra_usage.is_enabled // false')
+    if [[ "$extra_enabled" == "true" ]]; then
+        extra="enabled"
+    else
+        extra="not enabled"
+    fi
+
+    # Format as tab-separated for parsing
+    local parsed_data
+    parsed_data=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+        "$cs_pct" "$cs_resets" \
+        "$wa_pct" "$wa_resets" \
+        "$ws_pct" "$ws_resets" \
+        "$extra")
+
+    case "$format" in
+        json)   format_usage_json "$parsed_data" ;;
+        pretty) format_usage_pretty "$parsed_data" ;;
+        text)   format_usage_text "$parsed_data" ;;
+        *)      echo "Error: Unknown format '$format'" >&2; exit 1 ;;
+    esac
+}
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+main() {
+    local command=""
+    local format="$DEFAULT_FORMAT"
+    local pass_through_args=()
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --status)
+                command="status"
+                shift
+                ;;
+            --usage)
+                command="usage"
+                shift
+                ;;
+            --config)
+                command="config"
+                shift
+                ;;
+            --format=*)
+                format="${1#--format=}"
+                shift
+                ;;
+            --format)
+                if [[ $# -gt 1 ]]; then
+                    format="$2"
+                    shift 2
+                else
+                    echo "Error: --format requires a value" >&2
+                    exit 1
+                fi
+                ;;
+            --help-extended)
+                print_help
+                exit 0
+                ;;
+            --version-extended)
+                echo "claude-wrapper version $VERSION"
+                exit 0
+                ;;
+            *)
+                pass_through_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    # Handle extended commands
+    case "$command" in
+        status)
+            handle_status "$format"
+            exit 0
+            ;;
+        usage)
+            handle_usage "$format"
+            exit 0
+            ;;
+        config)
+            handle_config "$format"
+            exit 0
+            ;;
+    esac
+
+    # No extended command - pass through to real claude
+    local real_claude
+    real_claude=$(get_real_claude) || {
+        echo "Error: Could not find the real claude binary." >&2
+        echo "Please ensure claude is installed and in your PATH." >&2
+        echo "Or set CLAUDE_REAL_PATH environment variable." >&2
+        exit 1
+    }
+
+    # Use ${arr[@]+"${arr[@]}"} pattern to safely handle empty arrays with set -u
+    exec "$real_claude" ${pass_through_args[@]+"${pass_through_args[@]}"}
+}
+
+main "$@"

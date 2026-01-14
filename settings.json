@@ -1,0 +1,30 @@
+{
+  "enabledPlugins": {
+    "document-skills@anthropic-agent-skills": true,
+    "example-skills@anthropic-agent-skills": true,
+    "context7@claude-plugins-official": true,
+    "explanatory-output-style@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "learning-output-style@claude-plugins-official": false,
+    "linear@claude-plugins-official": true,
+    "Notion@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
+    "serena@claude-plugins-official": false,
+    "slack@claude-plugins-official": true,
+    "supabase@claude-plugins-official": true,
+    "vercel@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "greptile@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "clangd-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "huggingface-skills@claude-plugins-official": true
+  },
+  "alwaysThinkingEnabled": true
+}
