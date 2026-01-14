@@ -5,9 +5,9 @@
 ### Done
 - [x] Marketplace structure (`.claude-plugin/marketplace.json`)
 - [x] Plugin template (`plugins/_template/`)
+- [x] `tauri-dev` plugin
 
-### Not Done - No Plugins Created Yet
-- [ ] `tauri-dev` plugin
+### Not Done
 - [ ] `textual-tui` plugin
 - [ ] `excalidraw-diagrams` plugin
 - [ ] `manim-animations` plugin

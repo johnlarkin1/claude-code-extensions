@@ -7,5 +7,12 @@
     "description": "Claude Code plugins for desktop apps, TUIs, diagrams, and developer workflows",
     "pluginRoot": "./plugins"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "tauri-dev",
+      "source": "tauri-dev",
+      "description": "Tauri v2 desktop app development with debugging specialist agent",
+      "keywords": ["tauri", "rust", "desktop", "webview", "ipc", "cross-platform"]
+    }
+  ]
 }
