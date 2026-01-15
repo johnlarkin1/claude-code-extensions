@@ -135,6 +135,9 @@ Result:
 
 ## `diagram-code` - Multi-Format Diagramming Swiss Army Knife
 
+<details>
+<summary>Details</summary>
+
 **What it does:** Generate diagrams in Mermaid, GraphViz DOT, and Excalidraw formats from natural language descriptions.
 
 **Use Cases:**
@@ -151,9 +154,14 @@ Result:
 - The `diagram-architect` agent helps plan complex multi-component diagrams before generating
 - Mermaid output renders natively in GitHub, GitLab, Notion, and most documentation platforms
 
+</details>
+
 ---
 
 ## `excalidraw-diagrams` - Hand-Drawn Style Whiteboarding
+
+<details>
+<summary>Details</summary>
 
 **What it does:** Generate `.excalidraw` JSON files for diagrams with a distinctive hand-drawn, whiteboard aesthetic.
 
@@ -172,9 +180,14 @@ Result:
 - The `diagram-generator` specialist agent handles complex layouts with proper element bindings and connections
 - Perfect for presentations where you want diagrams that look intentionally informal
 
+</details>
+
 ---
 
 ## `manim-animations` - Mathematical Video Production
+
+<details>
+<summary>Details</summary>
 
 **What it does:** Create programmatic mathematical animations using ManimCE (Community Edition) for educational content and visualizations.
 
@@ -194,9 +207,14 @@ Result:
 - Supports 2D and 3D scenes with camera control, lighting, and smooth transforms
 - Ideal for anyone creating educational STEM content
 
+</details>
+
 ---
 
 ## `tauri-dev` - Cross-Platform Desktop App Development
+
+<details>
+<summary>Details</summary>
 
 **What it does:** Comprehensive assistance for building Tauri v2 desktop applications with Rust backends and web frontends.
 
@@ -215,9 +233,14 @@ Result:
 - The debugging specialist agent is invaluable for tracking down IPC serialization issues
 - Security best practices baked in: input validation, path sanitization, capability-based permissions
 
+</details>
+
 ---
 
 ## `textual-tui` - Terminal User Interfaces in Python
+
+<details>
+<summary>Details</summary>
 
 **What it does:** Build rich terminal applications using the Textual framework with a web-inspired widget architecture.
 
@@ -237,3 +260,5 @@ Result:
 - The `tui-reviewer` agent checks your code for Textual best practices and common mistakes
 - Workers system handles async operations without blocking the UI
 - Full testing support with `run_test()` pilot for automated UI testing
+
+</details>
