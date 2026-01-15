@@ -43,6 +43,7 @@ $ claude
 # Now you're good to install what you want, probably through the interactive window.
 
 # Some example installs:
+/plugin install diagram-code@larkin-plugins
 /plugin install tauri-dev@larkin-plugins
 /plugin install excalidraw-diagrams@diagram-market
 /plugin install manim-animations@animation-lab
