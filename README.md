@@ -51,6 +51,13 @@ $ claude
 
 Example screenshots:
 
+
+<img width="440" height="311" alt="Screenshot 2026-01-15 at 7 37 19 AM" src="https://github.com/user-attachments/assets/17bc401f-2ec9-4361-a3f8-f00b3421b391" />
+
+<img width="455" height="309" alt="Screenshot 2026-01-15 at 7 37 30 AM" src="https://github.com/user-attachments/assets/53adeae7-51c4-46ac-a043-6f4f78e8ac0c" />
+
+<img width="524" height="335" alt="Screenshot 2026-01-15 at 7 37 08 AM" src="https://github.com/user-attachments/assets/96ed7fc2-1e63-411a-bc50-108f9a2af65e" />
+
 ## Skills
 
 I'd say rip the copy and paste method after cloning.
