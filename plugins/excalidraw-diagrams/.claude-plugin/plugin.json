@@ -1,0 +1,10 @@
+{
+  "name": "excalidraw-diagrams",
+  "description": "Generate Excalidraw diagrams for flowcharts, architecture diagrams, sequence diagrams, mind maps, wireframes, and org charts with a diagram generation specialist agent",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["excalidraw", "diagrams", "flowcharts", "architecture", "whiteboarding", "visualization"],
+  "license": "MIT"
+}

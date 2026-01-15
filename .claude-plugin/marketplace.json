@@ -19,6 +19,12 @@
       "source": "textual-tui",
       "description": "Build terminal UIs with Textual framework and code review agent",
       "keywords": ["textual", "tui", "terminal", "python", "cli", "widgets", "tcss"]
+    },
+    {
+      "name": "excalidraw-diagrams",
+      "source": "excalidraw-diagrams",
+      "description": "Generate Excalidraw diagrams with diagram planning specialist agent",
+      "keywords": ["excalidraw", "diagrams", "flowcharts", "architecture", "whiteboarding", "visualization"]
     }
   ]
 }

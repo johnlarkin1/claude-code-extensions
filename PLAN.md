@@ -9,7 +9,7 @@
 - [x] `textual-tui` plugin
 
 ### Not Done
-- [ ] `excalidraw-diagrams` plugin
+- [x] `excalidraw-diagrams` plugin
 - [ ] `manim-animations` plugin
 
 ---
