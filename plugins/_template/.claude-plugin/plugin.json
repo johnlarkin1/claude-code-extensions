@@ -1,0 +1,10 @@
+{
+  "name": "plugin-name",
+  "description": "Description of what this plugin does",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["keyword1", "keyword2"],
+  "license": "MIT"
+}

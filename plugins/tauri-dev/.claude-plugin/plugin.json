@@ -1,0 +1,10 @@
+{
+  "name": "tauri-dev",
+  "description": "Tauri v2 desktop app development with comprehensive command patterns, plugin development guides, and a debugging specialist agent for IPC issues, command failures, and permission errors",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["tauri", "rust", "desktop", "webview", "ipc", "cross-platform"],
+  "license": "MIT"
+}
