@@ -5,32 +5,38 @@
   },
   "metadata": {
     "description": "Claude Code plugins for desktop apps, TUIs, diagrams, and developer workflows",
-    "pluginRoot": "./plugins"
+    "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "tauri-dev",
-      "source": "tauri-dev",
+      "source": "./plugins/tauri-dev",
       "description": "Tauri v2 desktop app development with debugging specialist agent",
       "keywords": ["tauri", "rust", "desktop", "webview", "ipc", "cross-platform"]
     },
     {
       "name": "textual-tui",
-      "source": "textual-tui",
+      "source": "./plugins/textual-tui",
       "description": "Build terminal UIs with Textual framework and code review agent",
       "keywords": ["textual", "tui", "terminal", "python", "cli", "widgets", "tcss"]
     },
     {
       "name": "excalidraw-diagrams",
-      "source": "excalidraw-diagrams",
+      "source": "./plugins/excalidraw-diagrams",
       "description": "Generate Excalidraw diagrams with diagram planning specialist agent",
       "keywords": ["excalidraw", "diagrams", "flowcharts", "architecture", "whiteboarding", "visualization"]
     },
     {
       "name": "manim-animations",
-      "source": "manim-animations",
+      "source": "./plugins/manim-animations",
       "description": "Create mathematical animations with Manim and animation planning specialist agent",
       "keywords": ["manim", "animation", "math", "visualization", "python", "video", "3D"]
+    },
+    {
+      "name": "diagram-code",
+      "source": "./plugins/diagram-code",
+      "description": "Generate diagrams using Mermaid, GraphViz DOT, and Excalidraw",
+      "keywords": ["mermaid", "graphviz", "dot", "excalidraw", "diagrams", "flowchart", "sequence", "architecture"]
     }
   ]
 }
