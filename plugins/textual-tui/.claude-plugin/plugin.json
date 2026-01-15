@@ -1,0 +1,10 @@
+{
+  "name": "textual-tui",
+  "description": "Build terminal user interfaces (TUI) with the Textual framework. Includes widget catalog, TCSS styling reference, complete examples, and a code reviewer agent for best practices",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["textual", "tui", "terminal", "python", "cli", "widgets", "tcss"],
+  "license": "MIT"
+}

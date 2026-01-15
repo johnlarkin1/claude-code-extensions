@@ -13,6 +13,12 @@
       "source": "tauri-dev",
       "description": "Tauri v2 desktop app development with debugging specialist agent",
       "keywords": ["tauri", "rust", "desktop", "webview", "ipc", "cross-platform"]
+    },
+    {
+      "name": "textual-tui",
+      "source": "textual-tui",
+      "description": "Build terminal UIs with Textual framework and code review agent",
+      "keywords": ["textual", "tui", "terminal", "python", "cli", "widgets", "tcss"]
     }
   ]
 }
