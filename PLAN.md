@@ -10,7 +10,7 @@
 
 ### Not Done
 - [x] `excalidraw-diagrams` plugin
-- [ ] `manim-animations` plugin
+- [x] `manim-animations` plugin
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "name": "manim-animations",
+  "description": "Create mathematical animations and visualizations using Manim (ManimCE) with an animation planning specialist agent",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["manim", "animation", "math", "visualization", "python", "video", "3D"],
+  "license": "MIT"
+}

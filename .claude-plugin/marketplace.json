@@ -25,6 +25,12 @@
       "source": "excalidraw-diagrams",
       "description": "Generate Excalidraw diagrams with diagram planning specialist agent",
       "keywords": ["excalidraw", "diagrams", "flowcharts", "architecture", "whiteboarding", "visualization"]
+    },
+    {
+      "name": "manim-animations",
+      "source": "manim-animations",
+      "description": "Create mathematical animations with Manim and animation planning specialist agent",
+      "keywords": ["manim", "animation", "math", "visualization", "python", "video", "3D"]
     }
   ]
 }
