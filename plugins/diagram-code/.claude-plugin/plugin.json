@@ -1,0 +1,10 @@
+{
+  "name": "diagram-code",
+  "description": "Generate diagrams using Mermaid, GraphViz DOT, and Excalidraw for flowcharts, sequence diagrams, architecture diagrams, network graphs, mind maps, wireframes, and more",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["mermaid", "graphviz", "dot", "excalidraw", "diagrams", "flowchart", "sequence", "architecture", "whiteboard", "visualization"],
+  "license": "MIT"
+}
