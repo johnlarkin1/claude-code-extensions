@@ -37,6 +37,12 @@
       "source": "./plugins/diagram-code",
       "description": "Generate diagrams using Mermaid, GraphViz DOT, and Excalidraw",
       "keywords": ["mermaid", "graphviz", "dot", "excalidraw", "diagrams", "flowchart", "sequence", "architecture"]
+    },
+    {
+      "name": "app-icon-generator",
+      "source": "./plugins/app-icon-generator",
+      "description": "Generate app icon assets for iOS, macOS, Android, and web from a source image",
+      "keywords": ["app-icon", "icon-generator", "ios", "android", "macos", "web", "pwa", "xcode", "favicon"]
     }
   ]
 }
