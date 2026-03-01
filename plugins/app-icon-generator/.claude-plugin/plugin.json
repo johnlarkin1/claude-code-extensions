@@ -1,0 +1,10 @@
+{
+  "name": "app-icon-generator",
+  "description": "Generate app icon assets for iOS, macOS, Android, and web from a source image using ImageMagick",
+  "version": "1.0.0",
+  "author": {
+    "name": "John Larkin"
+  },
+  "keywords": ["app-icon", "icon-generator", "ios", "android", "macos", "web", "pwa", "xcode", "imagemagick", "favicon"],
+  "license": "MIT"
+}
